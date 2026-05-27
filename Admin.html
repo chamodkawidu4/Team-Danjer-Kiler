@@ -1,0 +1,168 @@
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+import { getStorage, ref, uploadString, getDownloadURL }
+  from "https://www.gstatic.com/firebasejs/11.0.0/firebase-storage.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDmJS-ke_JvqT_pAD03tfZrNTZeIk8dcA4",
+  authDomain: "vilanwaln.firebaseapp.com",
+  projectId: "vilanwaln",
+  storageBucket: "vilanwaln.firebasestorage.app",
+  messagingSenderId: "471799058616",
+  appId: "1:471799058616:web:b6e7b69a8fd74e1ca1e44d",
+  measurementId: "G-H68CSXM88S"
+};
+
+const app  = initializeApp(firebaseConfig);
+const db   = getFirestore(app);
+const stor = getStorage(app);
+const postsCol = collection(db, 'posts');
+
+// ─── PASSWORD ───
+var ADMIN_PASSWORD = 'danjer2026';
+
+// ─── LOGIN ───
+var pwInput     = document.getElementById('pwInput');
+var loginBtn    = document.getElementById('loginBtn');
+var loginErr    = document.getElementById('loginErr');
+var loginScreen = document.getElementById('loginScreen');
+var adminPanel  = document.getElementById('adminPanel');
+
+function doLogin() {
+  if (pwInput.value === ADMIN_PASSWORD) {
+    loginScreen.style.display = 'none';
+    adminPanel.style.display  = 'block';
+    startListening();
+  } else {
+    loginErr.textContent = '✕  WRONG PASSWORD';
+    pwInput.classList.add('shake');
+    pwInput.style.borderColor = 'var(--red)';
+    setTimeout(function() {
+      pwInput.classList.remove('shake');
+      pwInput.style.borderColor = '';
+      loginErr.textContent = '';
+    }, 1400);
+    pwInput.value = '';
+  }
+}
+loginBtn.addEventListener('click', doLogin);
+pwInput.addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
+document.getElementById('logoutBtn').addEventListener('click', function() {
+  adminPanel.style.display = 'none';
+  loginScreen.style.display = 'flex';
+  pwInput.value = '';
+});
+
+// ─── REAL-TIME LISTEN ───
+var postsGrid = document.getElementById('postsGrid');
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function startListening() {
+  var q = query(postsCol, orderBy('createdAt', 'desc'));
+  onSnapshot(q, function(snapshot) {
+    postsGrid.innerHTML = '';
+    document.getElementById('statCount').textContent = snapshot.size;
+    if (snapshot.empty) {
+      postsGrid.innerHTML = '<div class="empty-state">NO POSTS YET · ADD ONE ABOVE</div>';
+      return;
+    }
+    snapshot.forEach(function(docSnap) {
+      var p = docSnap.data();
+      var id = docSnap.id;
+      var card = document.createElement('div');
+      card.className = 'post-card';
+      var photoHtml = p.photo ? '<img src="' + p.photo + '" alt="post"/>' : '<div class="no-img">&#9672;</div>';
+      var nameHtml  = p.name    ? '<div class="card-name">'    + esc(p.name)    + '</div>' : '';
+      var capHtml   = p.caption ? '<div class="card-caption">' + esc(p.caption).replace(/\n/g,'<br>') + '</div>' : '';
+      card.innerHTML = photoHtml +
+        '<div class="card-body">' + nameHtml + capHtml + '</div>' +
+        '<div class="card-footer"><span class="card-time">' + (p.time||'') + '</span>' +
+        '<button class="delete-btn" title="Delete">&#10005;</button></div>';
+      card.querySelector('.delete-btn').addEventListener('click', function() {
+        card.style.opacity = '0'; card.style.transform = 'scale(.9)';
+        setTimeout(function() { deleteDoc(doc(db, 'posts', id)); }, 300);
+      });
+      postsGrid.appendChild(card);
+    });
+  });
+}
+
+// ─── DROP ZONE ───
+var dropZone   = document.getElementById('dropZone');
+var photoInput = document.getElementById('photoInput');
+var changeBtn  = document.getElementById('changeBtn');
+var currentPhoto     = null;
+var currentPhotoFile = null;
+
+dropZone.addEventListener('click', function(e) { if (e.target !== changeBtn) photoInput.click(); });
+changeBtn.addEventListener('click', function(e) { e.stopPropagation(); photoInput.click(); });
+photoInput.addEventListener('change', function(e) { loadPhoto(e.target.files[0]); });
+dropZone.addEventListener('dragover', function(e) { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', function() { dropZone.classList.remove('drag-over'); });
+dropZone.addEventListener('drop', function(e) { e.preventDefault(); dropZone.classList.remove('drag-over'); loadPhoto(e.dataTransfer.files[0]); });
+
+function loadPhoto(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  currentPhotoFile = file;
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    currentPhoto = ev.target.result;
+    var img = dropZone.querySelector('.preview-img');
+    if (!img) { img = document.createElement('img'); img.className = 'preview-img'; dropZone.appendChild(img); }
+    img.src = currentPhoto; img.style.display = 'block';
+    dropZone.querySelector('.dz-icon').style.display = 'none';
+    dropZone.querySelector('.dz-text').style.display = 'none';
+    dropZone.querySelector('.dz-sub').style.display  = 'none';
+    changeBtn.style.opacity = '1';
+  };
+  reader.readAsDataURL(file);
+}
+
+// ─── POST ───
+document.getElementById('postBtn').addEventListener('click', async function() {
+  var caption = document.getElementById('captionInput').value.trim();
+  var name    = document.getElementById('nameInput').value.trim();
+  var pb      = document.getElementById('postBtn');
+  if (!caption && !currentPhoto) {
+    pb.style.boxShadow = '0 0 30px #ff2244';
+    setTimeout(function(){ pb.style.boxShadow=''; }, 600);
+    return;
+  }
+  pb.textContent = 'UPLOADING…';
+  pb.disabled = true;
+
+  var photoURL = null;
+  if (currentPhotoFile) {
+    var imgRef = ref(stor, 'posts/' + Date.now() + '_' + currentPhotoFile.name);
+    await uploadString(imgRef, currentPhoto, 'data_url');
+    photoURL = await getDownloadURL(imgRef);
+  }
+
+  var now = new Date();
+  var timeStr = now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})
+              + ' - ' + now.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
+
+  await addDoc(postsCol, {
+    name: name, caption: caption, photo: photoURL, time: timeStr,
+    createdAt: serverTimestamp()
+  });
+
+  document.getElementById('captionInput').value = '';
+  document.getElementById('nameInput').value    = '';
+  currentPhoto = null; currentPhotoFile = null;
+  var pImg = dropZone.querySelector('.preview-img');
+  if (pImg) pImg.remove();
+  dropZone.querySelector('.dz-icon').style.display = '';
+  dropZone.querySelector('.dz-text').style.display = '';
+  dropZone.querySelector('.dz-sub').style.display  = '';
+  changeBtn.style.opacity = '';
+  photoInput.value = '';
+  pb.textContent = '⬡  POST TO WALL';
+  pb.disabled = false;
+  pb.style.boxShadow = '0 0 30px #00ff88';
+  setTimeout(function(){ pb.style.boxShadow=''; }, 600);
+});
+</script>

@@ -1,0 +1,70 @@
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+import { getFirestore, collection, onSnapshot, query, orderBy }
+  from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDmJS-ke_JvqT_pAD03tfZrNTZeIk8dcA4",
+  authDomain: "vilanwaln.firebaseapp.com",
+  projectId: "vilanwaln",
+  storageBucket: "vilanwaln.firebasestorage.app",
+  messagingSenderId: "471799058616",
+  appId: "1:471799058616:web:b6e7b69a8fd74e1ca1e44d",
+  measurementId: "G-H68CSXM88S"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+const postsCol = collection(db, 'posts');
+
+// ─── MUSIC ───
+var audio   = document.getElementById('bgAudio');
+var overlay = document.getElementById('musicOverlay');
+var btn     = document.getElementById('musicBtn');
+audio.volume = 0.4;
+audio.play().then(function() {
+  overlay.style.display = 'none';
+}).catch(function() {
+  overlay.style.display = 'flex';
+});
+overlay.addEventListener('click', function() {
+  audio.play();
+  overlay.style.opacity = '0';
+  overlay.style.transition = 'opacity 0.5s';
+  setTimeout(function() { overlay.style.display = 'none'; }, 500);
+});
+btn.addEventListener('click', function() {
+  if (audio.paused) {
+    audio.play(); btn.innerHTML = '&#9835;'; btn.style.color = '#00ff88';
+  } else {
+    audio.pause(); btn.innerHTML = '&#9834;'; btn.style.color = 'rgba(0,255,136,0.4)';
+  }
+});
+
+// ─── REAL-TIME WALL ───
+var postsGrid = document.getElementById('postsGrid');
+var emptyState = document.getElementById('emptyState');
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+var q = query(postsCol, orderBy('createdAt', 'desc'));
+onSnapshot(q, function(snapshot) {
+  postsGrid.innerHTML = '';
+  if (snapshot.empty) {
+    postsGrid.innerHTML = '<div class="empty-state">NO POSTS YET &middot; BE THE FIRST TO DROP SOMETHING</div>';
+    return;
+  }
+  snapshot.forEach(function(docSnap) {
+    var p = docSnap.data();
+    var card = document.createElement('div');
+    card.className = 'post-card';
+    var photoHtml = p.photo ? '<img src="' + p.photo + '" alt="post"/>' : '<div class="no-img">&#9672;</div>';
+    var nameHtml  = p.name    ? '<div class="card-name">'    + esc(p.name)    + '</div>' : '';
+    var capHtml   = p.caption ? '<div class="card-caption">' + esc(p.caption).replace(/\n/g,'<br>') + '</div>' : '';
+    card.innerHTML = photoHtml +
+      '<div class="card-body">' + nameHtml + capHtml + '</div>' +
+      '<div class="card-footer"><span class="card-time">' + (p.time||'') + '</span></div>';
+    postsGrid.appendChild(card);
+  });
+});
+</script>
